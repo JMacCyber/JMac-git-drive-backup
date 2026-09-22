@@ -1,0 +1,8 @@
+# Your own settings. Never commit this: it holds your cloud path and account.
+config.env
+
+# Anything a run produces
+demo/data*/
+*.log
+.DS_Store
+__pycache__/

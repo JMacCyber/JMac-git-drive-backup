@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>@@LABEL@@.dashboard</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string><string>-lc</string>
+    <string>exec /usr/bin/python3 "@@ROOT@@/bin/dashboard.py"</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>@@LOGDIR@@/dashboard.out.log</string>
+  <key>StandardErrorPath</key><string>@@LOGDIR@@/dashboard.err.log</string>
+</dict>
+</plist>

@@ -1,0 +1,7 @@
+# One repo per week, in this order, wrapping round at the end.
+# Lines starting with # are ignored. Put the repos that would hurt most to lose
+# at the top. Which position comes next is kept in restore-rotation.pos.
+#
+# Replace these with your own. Format: owner/name
+octocat/hello-world
+octocat/spoon-knife
