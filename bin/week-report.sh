@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env zsh
 # Reads the last 7 days of backup state and prints a plain-text report.
 # Safe to run any time. It reads files and prints; it changes nothing.
 # Deterministic on purpose: the Monday routine runs THIS and relays it, so the

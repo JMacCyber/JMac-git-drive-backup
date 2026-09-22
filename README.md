@@ -1,5 +1,7 @@
 # JMac-git-drive-backup
 
+[![Test](https://github.com/JMacCyber/JMac-git-drive-backup/actions/workflows/test.yml/badge.svg)](https://github.com/JMacCyber/JMac-git-drive-backup/actions/workflows/test.yml)
+
 **Copies every one of your GitHub repos into a folder your cloud drive syncs, then
 proves once a week that a copy really comes back.**
 
@@ -7,8 +9,9 @@ GitHub holds your work. It is one company, one account, one password. If the acc
 locks, or a token leaks, or you delete the wrong thing, it can all go at once. This makes
 a second copy somewhere else, and it checks that copy instead of hoping.
 
-Free. It uses git, Python and the scheduler already on your Mac. It starts no paid
-service. It never writes to GitHub, and it never deletes anything of yours.
+Free. It uses git, Python and the scheduler already on your machine. It starts no paid
+service. It never writes to GitHub, and it never deletes anything of yours. Runs on macOS
+and Linux.
 
 ![The dashboard overview](docs/images/01-overview.png)
 
@@ -45,7 +48,7 @@ After that, once a week:
 ## Install
 
 ```bash
-git clone https://github.com/YOUR-NAME/JMac-git-drive-backup.git
+git clone https://github.com/JMacCyber/JMac-git-drive-backup.git
 cd JMac-git-drive-backup
 cp config.env.example config.env
 # open config.env and set CLOUD_DIR to your synced folder
@@ -53,8 +56,8 @@ zsh install.sh --check     # tells you what is missing, changes nothing
 zsh install.sh             # sets it up and starts the dashboard
 ```
 
-You need: macOS, git, Python 3, and the [GitHub CLI](https://cli.github.com) signed in
-with `gh auth login`. The check step names anything you are missing.
+You need: macOS or Linux, zsh, git, Python 3, and the [GitHub CLI](https://cli.github.com)
+signed in with `gh auth login`. The check step names anything you are missing.
 
 Read [docs/SETUP.md](docs/SETUP.md) for the longer walk-through, including how to find
 your cloud folder's real path.
@@ -106,14 +109,33 @@ When you press Approve, it stops that one preview server and deletes that one fo
 
 ## Honest Limits
 
-- macOS only, because it uses `launchd` for the schedule. The scripts themselves are plain
-  git, zsh and Python, so a Linux port is mostly writing four systemd timers.
+- macOS and Linux only. macOS runs the jobs on `launchd`, Linux on systemd user timers.
+  Windows is not supported: the scripts are zsh and the dashboard shells out to zsh to read
+  your settings. Making it work on Windows means rewriting the shell scripts in Python.
+- On Linux the timers only run while you are logged in, unless you turn on lingering:
+  `loginctl enable-linger $USER`.
 - A green week proves one repo rebuilt on one machine on one day. It says nothing about the
   repos it did not test that week. The dashboard says so on the page.
 - A repo with no commits has nothing to bundle. Those are listed separately so an
   unexplained gap never sits on the page looking like a failure.
 - The cloud provider is still one company. If you want a copy that survives them too, point
   `CLOUD_DIR` at an external disk and run a second copy of this.
+
+## Is It Tested
+
+Yes, on every push, on four machines: Ubuntu 24.04, Ubuntu 22.04, macOS 14 and macOS 15.
+The test builds a throwaway repo, bundles it, rebuilds it from that bundle alone, serves
+the rebuilt copy, opens the dashboard, approves the result, and then checks the preview
+stopped and the temporary copy was removed. 28 checks, and the run is red if one fails.
+
+Run the same test yourself, in about 20 seconds:
+
+```bash
+zsh tests/selftest.sh
+```
+
+It touches nothing of yours. Everything it makes lives in one temporary folder, and it
+never contacts GitHub.
 
 ## Documents
 

@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env zsh
 # Weekly restore test. Rebuilds ONE repo from its Google Drive bundle alone, then
 # proves the rebuild against GitHub, and registers the result for a human to approve
 # in the dashboard.
@@ -52,8 +52,8 @@ if [ ! -f "$BUN" ]; then
   ck "Bundle Present" "Failed" "no file at $BUN"
   BSIZE=0
 else
-  BSIZE=$(stat -f %z "$BUN")
-  ck "Bundle Present" "Passed" "$BSIZE bytes, written $(stat -f '%Sm' "$BUN")"
+  BSIZE=$(gdb_size "$BUN")
+  ck "Bundle Present" "Passed" "$BSIZE bytes, written $(gdb_mtime "$BUN")"
 fi
 
 # --- 1. verify the bundle before trusting a single object in it
@@ -114,7 +114,17 @@ if [ -n "$SRC" ]; then
   cmp_ck "File Manifest sha256" "$(man "$WS/$NAME")" "$(man "$WS/$NAME-source")"
 
   FILES=$( cd "$WS/$NAME" && find . -type f -not -path './.git/*' | wc -l | tr -d ' ' )
-  BYTES=$( cd "$WS/$NAME" && find . -type f -not -path './.git/*' -exec stat -f %z {} \; | awk '{t+=$1}END{print t+0}' )
+  # python walks the tree the same way on every platform. find -exec stat differs
+  # between BSD and GNU, and a wrong byte count here would be reported as evidence.
+  BYTES=$( python3 -c "
+import os, sys
+t = 0
+for r, d, f in os.walk(sys.argv[1]):
+    d[:] = [x for x in d if x != '.git']
+    for n in f:
+        p = os.path.join(r, n)
+        if not os.path.islink(p): t += os.path.getsize(p)
+print(t)" "$WS/$NAME" )
   ck "Working Tree Size" "Passed" "$FILES files, $BYTES bytes"
 
   if diff -r --exclude=.git "$WS/$NAME" "$WS/$NAME-source" > "$WS/tree.diff" 2>&1; then
@@ -176,7 +186,7 @@ PREV_PORT=""; PREV_PID=""; PREV_DIR=""; PREV_MODE=""
 free_port() {
   local p
   for p in $(seq "$PREVIEW_PORT_FROM" "$PREVIEW_PORT_TO"); do
-    nc -z 127.0.0.1 "$p" >/dev/null 2>&1 || { echo "$p"; return 0; }
+    gdb_port_busy "$p" || { echo "$p"; return 0; }
   done
   return 1
 }

@@ -9,7 +9,10 @@
 | `bin/dashboard.py` | The website on `localhost:3070` |
 | `bin/week-report.sh` | Prints the last seven days as plain text |
 | `bin/config.sh` | Reads `config.env`, hands the settings to everything else |
-| `launchd/*.plist.tmpl` | The four schedules. `install.sh` fills in your paths |
+| `bin/config.sh` handles the platform | `gdb_size`, `gdb_mtime`, `gdb_free_gb` and `gdb_port_busy` try the macOS form of each command, then the Linux one, so nothing else has to care |
+| `launchd/*.plist.tmpl` | The four schedules on macOS. `install.sh` fills in your paths |
+| `systemd/*.tmpl` | The same four schedules on Linux, as user timers. No root needed |
+| `tests/selftest.sh` | Runs the whole chain against a throwaway repo. 28 checks |
 
 ## What lands in your cloud folder
 
@@ -120,3 +123,34 @@ open ~/.git-drive-backup/proofs/                    # the HTML reports
 `bin/week-report.sh` prints and changes nothing, so it is safe to put on a schedule and
 have an assistant read out. Give the assistant the script, not the dashboard: the script's
 numbers come from the files, so the same week always reports the same way.
+
+## macOS and Linux
+
+The two do the same work with different schedulers, and the dashboard asks whichever one
+this machine has.
+
+| | macOS | Linux |
+|---|---|---|
+| Schedule | `launchd` user agents in `~/Library/LaunchAgents` | systemd user timers in `~/.config/systemd/user` |
+| Job names | `com.gitdrivebackup.daily` and so on | the same names, with `.timer` or `.service` |
+| Keeps the dashboard up | `KeepAlive` | `Restart=always` |
+| Runs when logged out | yes | only after `loginctl enable-linger $USER` |
+| See the jobs | `launchctl list \| grep gitdrivebackup` | `systemctl --user list-timers` |
+
+Windows is not supported. The scripts are zsh and the dashboard shells out to zsh to read
+your settings, so it would need rewriting in Python rather than porting.
+
+## Proving it still works
+
+```bash
+zsh tests/selftest.sh
+```
+
+It makes a throwaway repo, bundles it, rebuilds it from that bundle alone, serves the
+rebuilt copy, opens the dashboard on a spare port, approves the test, then checks the
+preview stopped and the temporary copy went. 28 checks, exit code 1 if any fail. It never
+reads your real backups and never contacts GitHub. Everything it makes stays in one
+folder under the system temp directory, and it tells you where that is.
+
+The same script runs on every push against Ubuntu 24.04, Ubuntu 22.04, macOS 14 and
+macOS 15.

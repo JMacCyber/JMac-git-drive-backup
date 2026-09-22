@@ -1,0 +1,93 @@
+# Runs the self test on every machine type GitHub offers standard runners for.
+#
+# Cost: this repository is public, and every runner named here is a standard
+# GitHub-hosted runner, which GitHub does not charge for on a public repository.
+# No larger runners, no self-hosted runners, and no schedule: it runs on a push,
+# a pull request, or when someone presses the button.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selftest:
+    name: Self test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-22.04, macos-14, macos-15]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Install zsh
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+      - name: Versions
+        run: |
+          uname -a
+          zsh --version
+          git --version
+          python3 --version
+      - name: Self test
+        run: zsh tests/selftest.sh
+
+  scheduler:
+    name: Scheduler files on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Install zsh
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+      - name: Shell and python parse
+        run: |
+          for f in bin/*.sh install.sh demo/make-demo.sh tests/selftest.sh; do zsh -n "$f"; echo "parsed $f"; done
+          python3 -m py_compile bin/dashboard.py demo/make-demo.py
+      - name: launchd plists are valid
+        if: runner.os == 'macOS'
+        run: |
+          for p in launchd/*.tmpl; do
+            sed -e 's|@@LABEL@@|com.test|g' -e 's|@@ROOT@@|/tmp/r|g' -e 's|@@LOGDIR@@|/tmp/l|g' "$p" > /tmp/u.plist
+            plutil -lint /tmp/u.plist
+          done
+      - name: systemd units are valid
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p /tmp/u
+          for f in systemd/*.tmpl; do
+            b=$(basename "$f" .tmpl)
+            sed -e 's|@@ROOT@@|/tmp/r|g' -e 's|@@LOGDIR@@|/tmp/l|g' -e 's|@@PYTHON@@|/usr/bin/python3|g' "$f" > "/tmp/u/com.test.$b"
+          done
+          ls -1 /tmp/u
+          systemd-analyze verify /tmp/u/com.test.*.service /tmp/u/com.test.*.timer
+
+  windows:
+    name: Windows, what actually works
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      # Windows is not a supported platform: the scripts are zsh and the
+      # dashboard shells out to zsh to read the settings. This job proves the
+      # one part that is portable, so the limit in the README stays honest
+      # rather than being an assumption nobody ever checked.
+      - name: The python parses
+        run: python -m py_compile bin/dashboard.py demo/make-demo.py
+      - name: Say plainly what does not work here
+        run: echo "zsh scripts and the scheduler are not supported on Windows. See README, Honest Limits."

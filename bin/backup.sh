@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env zsh
 # Every GitHub repo this account can see, mirrored locally, then copied to the cloud folder.
 #
 #   full/<owner>__<name>.bundle          the whole history. Written on the first run for a
@@ -44,7 +44,7 @@ mkdir -p "$MIRRORS/.tmp" "$STATE" "$LOGDIR"
 exec > >(tee -a "$LOG") 2>&1
 echo "== github-drive-backup $STAMP =="
 
-free_gb=$(df -g "$HOME" | awk 'NR==2{print $4}')
+free_gb=$(gdb_free_gb "$HOME")
 if [ "$free_gb" -lt "$MIN_FREE_GB" ]; then
   echo "STOP: only ${free_gb}GB free on the local disk, need ${MIN_FREE_GB}GB. Nothing was touched."
   exit 1

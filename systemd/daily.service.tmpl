@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily backup of every GitHub repo to the cloud folder
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env zsh @@ROOT@@/bin/backup.sh
+Environment=GDB_ROOT=@@ROOT@@
+StandardOutput=append:@@LOGDIR@@/backup-daily.log
+StandardError=append:@@LOGDIR@@/backup-daily.log

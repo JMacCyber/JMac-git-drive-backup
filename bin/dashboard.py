@@ -9,7 +9,7 @@ from a file the backup job wrote on local disk.
 Approvals are the point: a restored test copy is never deleted until it is
 approved here, and the record of what was approved and when outlives the copy.
 """
-import html, json, os, shutil, subprocess, time, urllib.parse
+import html, json, os, platform, shutil, subprocess, time, urllib.parse
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -18,13 +18,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def load_config():
     """One source of settings for every part of this tool: config.env, read through
     bin/config.sh so the shell scripts and this server can never disagree."""
-    out = subprocess.run(["/bin/zsh", os.path.join(ROOT, "bin", "config.sh"), "--json"],
+    # zsh is at /bin/zsh on macOS and /usr/bin/zsh on most Linux, so ask PATH.
+    zsh = shutil.which("zsh") or "/bin/zsh"
+    out = subprocess.run([zsh, os.path.join(ROOT, "bin", "config.sh"), "--json"],
                          capture_output=True, text=True, env={**os.environ, "GDB_ROOT": ROOT})
     if out.returncode != 0:
         raise SystemExit(out.stderr.strip() or "config.sh failed")
     return json.loads(out.stdout)
 
 CFG = load_config()
+OS = CFG.get("GDB_OS") or platform.system()
 PORT = int(CFG["DASH_PORT"])
 LABEL = CFG["LABEL_PREFIX"]
 BK = CFG["DATA_DIR"]
@@ -132,6 +135,19 @@ def logs():
              "when": os.path.getmtime(os.path.join(LOGS, f))} for f in fs]
 
 def agent(label):
+    """Is the scheduled job loaded, and what did it exit with last time?
+
+    macOS keeps this in launchd, Linux in systemd. Both are asked the same
+    question and answer in the same shape, so the page does not care which
+    machine it is on. Anything else reports Not Loaded, which is honest: this
+    tool only installs jobs on those two."""
+    if OS == "Darwin":
+        return _launchd(label)
+    if OS == "Linux":
+        return _systemd(label)
+    return {"loaded": False, "exit": None}
+
+def _launchd(label):
     try:
         p = subprocess.run(["launchctl", "print", "gui/%d/%s" % (os.getuid(), label)],
                            capture_output=True, text=True, timeout=5)
@@ -146,6 +162,29 @@ def agent(label):
                 if not ex.lstrip("-").isdigit():
                     ex = None
         return {"loaded": True, "exit": ex}
+    except Exception:
+        return {"loaded": False, "exit": None}
+
+def _systemd(label):
+    # The dashboard runs as a service, the others run on a timer. Ask about the
+    # timer where there is one, because a timer that is not active is the thing
+    # that would silently stop the backups.
+    unit = label + (".service" if label.endswith(".dashboard") else ".timer")
+    try:
+        p = subprocess.run(["systemctl", "--user", "show", unit,
+                            "-p", "LoadState", "-p", "ActiveState", "-p", "ExecMainStatus"],
+                           capture_output=True, text=True, timeout=5)
+        if p.returncode:
+            return {"loaded": False, "exit": None}
+        kv = dict(l.split("=", 1) for l in p.stdout.strip().split("\n") if "=" in l)
+        if kv.get("LoadState") != "loaded":
+            return {"loaded": False, "exit": None}
+        ex = kv.get("ExecMainStatus")
+        # systemd reports 0 for a unit that has never run. Only the service units
+        # carry a meaningful exit code, so a timer reports none rather than a fake 0.
+        if unit.endswith(".timer") or not (ex or "").lstrip("-").isdigit():
+            ex = None
+        return {"loaded": kv.get("ActiveState") in ("active", "activating"), "exit": ex}
     except Exception:
         return {"loaded": False, "exit": None}
 

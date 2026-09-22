@@ -1,0 +1,13 @@
+[Unit]
+Description=Backup Control dashboard
+
+[Service]
+ExecStart=@@PYTHON@@ @@ROOT@@/bin/dashboard.py
+Environment=GDB_ROOT=@@ROOT@@
+Restart=always
+RestartSec=5
+StandardOutput=append:@@LOGDIR@@/dashboard.log
+StandardError=append:@@LOGDIR@@/dashboard.log
+
+[Install]
+WantedBy=default.target

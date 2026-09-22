@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env zsh
 # Builds a fake dataset so the dashboard can be shown, photographed or tried out
 # with no real repos and nobody's real names in it.
 #
