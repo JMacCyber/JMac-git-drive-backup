@@ -99,7 +99,7 @@ PREV_PORT=$(sed -n 5p "$T/facts")
 # directory is /tmp on Linux, /var/folders/... on macOS and under AppData on Windows.
 WS=$("$GDB_PYTHON" -c "import json,sys;print(json.load(open(sys.argv[1]))['workspace'])" "$TESTDIR/$TID.json")
 [ -d "$WS" ] && ok "Restored Copy Kept" "$WS" || bad "Restored Copy Kept" "already gone"
-PREV_PID=$(cat "$WS/preview.pid" 2>/dev/null || echo "")
+PREV_PID=$(cat "$WS/preview.pid" 2>/dev/null || echo "")   # windows process id on Windows
 
 # --- 4. the preview really serves the rebuilt files
 BODY=""
@@ -144,8 +144,10 @@ grep -q '"keep"' "$SENTINEL" && ok "Traversal Id Refused" || bad "Traversal Id R
 curl -s -o /dev/null -X POST -d "id=$TID" --max-time 10 "http://127.0.0.1:$DASH_PORT/approve"
 sleep 1
 [ -d "$WS" ] && bad "Approval Removed The Copy" "still there" || ok "Approval Removed The Copy"
-if [ -n "$PREV_PID" ] && kill -0 "$PREV_PID" 2>/dev/null; then
-  bad "Approval Stopped The Preview" "pid $PREV_PID alive"
+# Ask the port, not the process table. The recorded id is a Windows one under Git Bash,
+# which this shell cannot signal, and a dead port is the thing that actually matters.
+if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PREV_PORT/" 2>/dev/null; then
+  bad "Approval Stopped The Preview" "port $PREV_PORT still answers"
 else
   ok "Approval Stopped The Preview"
 fi

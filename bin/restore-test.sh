@@ -202,6 +202,18 @@ fi
 # PREVIEW_RUN_CMD in config.env to run the project's own server instead, and read
 # docs/HOW-IT-WORKS.md first: that choice runs code out of the backup.
 PREV_PORT=""; PREV_PID=""; PREV_DIR=""; PREV_MODE=""
+# The dashboard is the thing that later stops this server, and on Windows it is a
+# native program while this script runs under Git Bash. The two number processes
+# differently, so what gets recorded there is the Windows process id, which both can
+# act on. Everywhere else the two are the same number.
+gdb_write_pid() {
+  local shell_pid="$1" file="$2" out="$1"
+  if [ "$GDB_OS" = "Windows" ] && [ -r "/proc/$shell_pid/winpid" ]; then
+    out=$(cat "/proc/$shell_pid/winpid")
+  fi
+  echo "$out" > "$file"
+  echo "$shell_pid" > "$file.shell"
+}
 free_port() {
   local p
   for p in $(seq "$PREVIEW_PORT_FROM" "$PREVIEW_PORT_TO"); do
@@ -219,7 +231,7 @@ if [ -n "$PREV_PORT" ]; then
   [ -n "$PREV_DIR" ] || PREV_DIR="$R"
   if [ -n "${PREVIEW_RUN_CMD:-}" ]; then
     PREV_MODE="project server: $PREVIEW_RUN_CMD"
-    ( cd "$R" && PORT="$PREV_PORT" nohup bash -lc "$PREVIEW_RUN_CMD" > "$WS/preview.log" 2>&1 & echo $! > "$WS/preview.pid" )
+    ( cd "$R" && PORT="$PREV_PORT" nohup bash -lc "$PREVIEW_RUN_CMD" > "$WS/preview.log" 2>&1 & gdb_write_pid $! "$WS/preview.pid" )
   else
     PREV_MODE="static files from ${PREV_DIR##*/}"
     # Same stdlib server as "$GDB_PYTHON" -m http.server, minus one thing: its bind calls
@@ -237,11 +249,12 @@ class S(ThreadingHTTPServer):
 S(("127.0.0.1", int(sys.argv[1])),
   partial(SimpleHTTPRequestHandler, directory=sys.argv[2])).serve_forever()
 ' "$PREV_PORT" "$PREV_DIR" > "$WS/preview.log" 2>&1 &
-    echo $! > "$WS/preview.pid"
+    gdb_write_pid $! "$WS/preview.pid"
   fi
   sleep 2
   PREV_PID=$(cat "$WS/preview.pid" 2>/dev/null || echo "")
-  if [ -n "$PREV_PID" ] && kill -0 "$PREV_PID" 2>/dev/null; then
+  PREV_SHELL_PID=$(cat "$WS/preview.pid.shell" 2>/dev/null || echo "$PREV_PID")
+  if [ -n "$PREV_SHELL_PID" ] && kill -0 "$PREV_SHELL_PID" 2>/dev/null; then
     ck "Preview Served" "Passed" "http://localhost:$PREV_PORT  ($PREV_MODE)"
   else
     ck "Preview Served" "Amber" "preview did not stay up, see preview.log"

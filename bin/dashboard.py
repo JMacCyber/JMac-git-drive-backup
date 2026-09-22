@@ -541,6 +541,10 @@ def p_test(tid):
               '<span class="pill">Decided %s</span> <span class="pill">Test copy: <span class="%s">%s</span>'
               "</span></p>" % (e(ap.get("state")), e(ap.get("state")), e(when(ap.get("at"))),
                                e(cl.get("state")), e(cl.get("state"))))
+        if cl.get("why"):
+            b += ('<p class="note">The copy was not removed because %s. It is still at '
+                  '<span class="mono">%s</span>, and you can delete it yourself.</p>'
+                  % (e(cl["why"]), e(t.get("workspace"))))
     b += "<h2>Checks</h2><table><tr><th>Check</th><th>Result</th><th>What Was Measured</th></tr>"
     for c in t.get("checks", []):
         b += ('<tr><td>%s</td><td class="%s">%s</td><td class="mono">%s</td></tr>'
@@ -617,6 +621,8 @@ def stop_preview(pid, ws):
     The pid is checked against its own command line before any signal is sent. A pid
     is reused by the operating system, so a stale record could otherwise name a
     process that has nothing to do with this tool."""
+    if os.name == "nt":
+        return _stop_preview_windows(pid)
     try:
         cmd = subprocess.run(["ps", "-o", "command=", "-p", str(pid)],
                              capture_output=True, text=True).stdout.strip()
@@ -633,22 +639,81 @@ def stop_preview(pid, ws):
     except Exception:
         return "Stop Failed"
 
+def _stop_preview_windows(pid):
+    """Windows has no ps and no signals. tasklist says whether the id is still alive and
+    what program holds it, which is the same pid-reuse check by a different name."""
+    try:
+        row = subprocess.run(["tasklist", "/FI", "PID eq %s" % pid, "/FO", "CSV", "/NH"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:
+        return "Stop Failed"
+    if not row or row.lower().startswith("info:"):
+        return "Already Stopped"
+    if "python" not in row.lower() and "node" not in row.lower():
+        return "Not Stopped, Pid Reused"
+    try:
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                       capture_output=True, timeout=10)
+        time.sleep(0.4)
+        return "Stopped"
+    except Exception:
+        return "Stop Failed"
+
 
 # The only folders this dashboard may ever remove: a folder named restore-test-<id>
 # sitting directly inside a temp directory. A hardcoded "/tmp/" prefix was right on
 # macOS and Linux and wrong on Windows, where the temp directory is under AppData.
-TEMP_ROOTS = set()
-for _c in (tempfile.gettempdir(), os.environ.get("TMPDIR"), os.environ.get("TEMP"),
-           os.environ.get("TMP"), "/tmp"):
-    if _c and os.path.isdir(_c):
-        TEMP_ROOTS.add(os.path.realpath(_c))
+def _temp_roots():
+    """Every folder this machine calls its temp directory.
+
+    On Windows this cannot come from the environment alone. Git Bash hands a native
+    program TMP=/tmp, which no Windows program can resolve, so the list would come out
+    empty and nothing would ever be removable. Ask Windows itself instead, and run any
+    leftover posix-looking path through cygpath."""
+    out = set()
+    cands = [tempfile.gettempdir(), os.environ.get("TMPDIR"),
+             os.environ.get("TEMP"), os.environ.get("TMP"), "/tmp"]
+    if os.name == "nt":
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(260)
+            if ctypes.windll.kernel32.GetTempPathW(260, buf):
+                cands.append(buf.value)
+        except Exception:
+            pass
+    for c in list(cands):
+        if c and not os.path.isdir(c) and c.startswith("/"):
+            try:
+                c = subprocess.run(["cygpath", "-w", c], capture_output=True,
+                                   text=True, timeout=5).stdout.strip()
+            except Exception:
+                c = ""
+        if c and os.path.isdir(c):
+            out.add(os.path.realpath(c))
+    return out
+
+TEMP_ROOTS = _temp_roots()
 
 def removable(ws):
-    if not ws or not os.path.isdir(ws):
-        return False
+    """True only for a folder named restore-test-<id> sitting directly in a temp root.
+    Returns the reason when it is false, so a refusal is never silent."""
+    if not ws:
+        return False, "the record names no folder"
+    if not os.path.isdir(ws):
+        return False, "the folder is not there any more"
     real = os.path.realpath(ws)
-    return (os.path.basename(real).startswith("restore-test-")
-            and os.path.dirname(real) in TEMP_ROOTS)
+    if not os.path.basename(real).startswith("restore-test-"):
+        return False, "that folder was not made by a restore test"
+    parent = os.path.dirname(real)
+    for root in TEMP_ROOTS:
+        try:
+            # samefile, not string equality: the same folder is spelled several ways on
+            # Windows, where RUNNER~1 and runneradmin are one directory.
+            if os.path.samefile(parent, root):
+                return True, ""
+        except OSError:
+            pass
+    return False, "that folder is not inside this machine's temp directory"
 
 TID_OK = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._-]{0,119}\Z")
 
@@ -678,10 +743,14 @@ def decide(tid, state, delete_copy):
     if delete_copy:
         ws = t.get("workspace") or ""
         ok = False
-        if removable(ws):
+        allowed, why = removable(ws)
+        if allowed:
             shutil.rmtree(ws, ignore_errors=True)
             ok = not os.path.exists(ws)
+            if not ok:
+                why = "the folder would not delete, something still has it open"
         t["cleanup"] = {"state": "Done" if ok else "Nothing To Delete",
+                        "why": "" if ok else why,
                         "at": datetime.now().isoformat(timespec="seconds"),
                         "freedBytes": (t.get("workspaceBytes") or 0) if ok else 0}
     else:
