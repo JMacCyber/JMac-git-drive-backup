@@ -2,6 +2,9 @@
 
 Twenty minutes, most of it waiting for the first backup.
 
+This walk-through is written for macOS. Linux and Windows differ in two places only,
+getting the tools and finding your cloud folder, and both are marked below.
+
 ## 1. Get the tools
 
 ```bash
@@ -9,6 +12,14 @@ xcode-select --install          # git, if you do not have it
 brew install gh                 # the GitHub command line tool
 gh auth login                   # sign in, pick HTTPS
 ```
+
+**On Linux:** `sudo apt-get install git python3` and install `gh` from
+[cli.github.com](https://cli.github.com), then `gh auth login`.
+
+**On Windows:** install [Git for Windows](https://gitforwindows.org), which brings the Git
+Bash window every command here needs, then `winget install GitHub.cli` and
+`winget install Python.Python.3.12`. Run everything from Git Bash, not from Command Prompt
+or PowerShell.
 
 Check it worked:
 
@@ -30,13 +41,19 @@ A Google Drive path usually looks like this:
 /Users/you/Library/CloudStorage/GoogleDrive-you@gmail.com/My Drive/GitHub Backup
 ```
 
+**On Linux** it is wherever your sync client mounts the drive, often under `~/`.
+
+**On Windows** Drive is usually a drive letter. In Git Bash, write `G:` as `/g`, so
+`G:\My Drive\GitHub Backup` goes into `config.env` as
+`/g/My Drive/GitHub Backup`. Run `pwd` inside the folder if you are unsure.
+
 The folder does not have to exist yet. The installer makes it.
 
 ## 3. Write your config
 
 ```bash
 cp config.env.example config.env
-open -e config.env
+open -e config.env      # Linux: nano config.env      Windows: notepad config.env
 ```
 
 Set `CLOUD_DIR`. Everything else has a working default.
@@ -103,6 +120,12 @@ run the installer again.
 
 **A job shows `NOT LOADED`** — run the installer again. macOS drops user jobs if the plist
 file is edited underneath them.
+
+**On Windows a task shows `Last Result 267011`** — that means it has not run yet, not that
+it failed. Check it with `schtasks /query /tn com.gitdrivebackup.daily /fo list /v`.
+
+**On Windows `install.sh` says schtasks is missing** — you are in Command Prompt or
+PowerShell. Open Git Bash and run it there.
 
 **Google Drive says "operation not permitted"** — macOS will not let a scheduled job touch
 a file in your Drive folder that a different program created. This tool works around it by
