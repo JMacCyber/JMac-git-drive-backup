@@ -1,6 +1,8 @@
 # JMac-git-drive-backup
 
 [![Test](https://github.com/JMacCyber/JMac-git-drive-backup/actions/workflows/test.yml/badge.svg)](https://github.com/JMacCyber/JMac-git-drive-backup/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/tag/JMacCyber/JMac-git-drive-backup?label=release&sort=semver)](https://github.com/JMacCyber/JMac-git-drive-backup/releases)
+[![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
 **Copies every one of your GitHub repos into a folder your cloud drive syncs, then
 proves once a week that a copy really comes back.**
@@ -149,6 +151,17 @@ never contacts GitHub.
 - [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) — what every file does, and how to restore by hand
 - [docs/WHY.md](docs/WHY.md) — why it is built this way
 - [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) — every screen, with what it shows
+
+## Versions
+
+`v1.0.0`, 2026-09-22. The first release. It runs on macOS, Linux and Windows, and all
+32 checks pass on six machines.
+
+`main` is where the work lands and every push is tested. To pin to the release instead:
+
+```bash
+git clone --branch v1.0.0 https://github.com/JMacCyber/JMac-git-drive-backup.git
+```
 
 ## Licence
 
