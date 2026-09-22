@@ -53,8 +53,8 @@ That prints kilobytes.
 ## 4. Install
 
 ```bash
-zsh install.sh --check    # checks the machine, changes nothing
-zsh install.sh            # makes folders, loads the four jobs, starts the dashboard
+bash install.sh --check    # checks the machine, changes nothing
+bash install.sh            # makes folders, loads the four jobs, starts the dashboard
 ```
 
 Open http://localhost:3070. It will be empty until the first backup runs.
@@ -65,7 +65,7 @@ Do not wait for 02:30. The first run is the long one, because every repo needs a
 bundle.
 
 ```bash
-zsh bin/backup.sh
+bash bin/backup.sh
 ```
 
 Watch it, or leave it. When it finishes the dashboard fills in.
@@ -85,7 +85,7 @@ the end.
 Try one now instead of waiting for Sunday:
 
 ```bash
-zsh bin/restore-test.sh
+bash bin/restore-test.sh
 ```
 
 ## Common Mistakes

@@ -1,12 +1,12 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 # Loads config.env and exports every path the other scripts use.
 # Every script sources this one. Nothing else reads config.env, so there is one
 # place a setting can be wrong, not four.
 #
 #   source bin/config.sh          in a script
-#   zsh bin/config.sh --json      prints the resolved settings, used by dashboard.py
+#   bash bin/config.sh --json      prints the resolved settings, used by dashboard.py
 set -u
-GDB_ROOT="${GDB_ROOT:-${0:A:h:h}}"
+GDB_ROOT="${GDB_ROOT:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"}"
 CONF="${GDB_CONFIG:-$GDB_ROOT/config.env}"
 if [ ! -f "$CONF" ]; then
   echo "No config.env. Copy config.env.example to config.env and edit it." >&2
@@ -37,7 +37,22 @@ export TESTDIR="$DASHDIR/tests"
 # for exactly the four things this tool needs. Each helper tries the BSD form and
 # falls back to the GNU form, so every other script can stop caring which Mac or
 # Linux it is on.
-export GDB_OS="$(uname)"
+# uname says MINGW64_NT-10.0-22631 under Git Bash and MSYS_NT under MSYS2. Both are
+# Windows, and everything downstream only needs to know which of the three it is.
+case "$(uname)" in
+  Darwin)                 GDB_OS="Darwin" ;;
+  MINGW*|MSYS*|CYGWIN*)   GDB_OS="Windows" ;;
+  *)                      GDB_OS="Linux" ;;
+esac
+export GDB_OS
+
+# Windows installs Python as "python". Debian and macOS want "python3". Pick once.
+if [ -z "${GDB_PYTHON:-}" ]; then
+  for c in python3 python; do
+    command -v "$c" >/dev/null 2>&1 && { GDB_PYTHON="$c"; break; }
+  done
+fi
+export GDB_PYTHON="${GDB_PYTHON:-python3}"
 
 # Branch on the OS, never on the exit code. GNU stat takes -f too, where it means
 # "file system status", so `stat -f %z file || stat -c %s file` succeeds on Linux and
@@ -51,16 +66,16 @@ else
 fi
 gdb_free_gb() { df -Pk "$1" | awk 'NR==2{printf "%d", $4/1048576}'; }    # -Pk is POSIX
 gdb_port_busy() {   # exit 0 when something is already listening on the port
-  python3 -c "import socket,sys
+  "$GDB_PYTHON" -c "import socket,sys
 s=socket.socket(); s.settimeout(0.3)
 r=s.connect_ex(('127.0.0.1', int(sys.argv[1]))); s.close()
 sys.exit(0 if r == 0 else 1)" "$1"
 }
 
 if [ "${1:-}" = "--json" ]; then
-  python3 -c "
+  "$GDB_PYTHON" -c "
 import json, os
-k = '''GDB_OS GDB_ROOT CLOUD_DIR DATA_DIR GH_AFFILIATION MIN_FREE_GB DASH_PORT
+k = '''GDB_OS GDB_PYTHON GDB_ROOT CLOUD_DIR DATA_DIR GH_AFFILIATION MIN_FREE_GB DASH_PORT
 PREVIEW_PORT_FROM PREVIEW_PORT_TO LABEL_PREFIX MIRRORS STATE LOGDIR PROOFS
 DASHDIR TESTDIR'''.split()
 print(json.dumps({x: os.environ.get(x, '') for x in k}))"

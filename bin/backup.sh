@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 # Every GitHub repo this account can see, mirrored locally, then copied to the cloud folder.
 #
 #   full/<owner>__<name>.bundle          the whole history. Written on the first run for a
@@ -14,7 +14,7 @@
 set -u
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-GDB_ROOT="${GDB_ROOT:-${0:A:h:h}}"
+GDB_ROOT="${GDB_ROOT:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"}"
 source "$GDB_ROOT/bin/config.sh"
 DRIVE="$CLOUD_DIR"
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -27,7 +27,7 @@ LOG="$LOGDIR/backup-$STAMP.log"
 # still recoverable.
 # du reports 0 for a file Google Drive has uploaded and dropped from the local cache.
 # The logical size survives that, so report it instead.
-hsize() { python3 -c "import os,sys;b=os.path.getsize(sys.argv[1]);print('%.1f MB'%(b/1048576) if b>=1048576 else '%d KB'%(b//1024))" "$1"; }
+hsize() { "$GDB_PYTHON" -c "import os,sys;b=os.path.getsize(sys.argv[1]);print('%.1f MB'%(b/1048576) if b>=1048576 else '%d KB'%(b//1024))" "$1"; }
 
 SIZES="$STATE/drive-sizes.tsv"
 note() {  # note <path it just wrote into Drive>
@@ -76,7 +76,7 @@ REPOLIST="$LOGDIR/repos-$STAMP.json"
       gh repo list "$org" --limit 1000 --json nameWithOwner,isPrivate,isArchived,pushedAt,diskUsage
     done
   fi
-} | python3 -c "
+} | "$GDB_PYTHON" -c "
 import json,sys
 seen={}
 buf=sys.stdin.read(); dec=json.JSONDecoder(); i=0
@@ -100,7 +100,7 @@ FORCE_FULL=${BACKUP_FULL:-0}
 OK=0; FAIL=0; FULLS=0; INCS=0; QUIET=0
 FAILED=()
 
-for NWO in $(python3 -c "import json;[print(r['nameWithOwner']) for r in json.load(open('$REPOLIST'))]"); do
+for NWO in $("$GDB_PYTHON" -c "import json;[print(r['nameWithOwner']) for r in json.load(open('$REPOLIST'))]"); do
   if [ "$LIMIT" -gt 0 ] && [ "$OK" -ge "$LIMIT" ]; then break; fi
   SAFE="${NWO//\//__}"
   M="$MIRRORS/$SAFE.git"
@@ -186,10 +186,13 @@ for NWO in $(python3 -c "import json;[print(r['nameWithOwner']) for r in json.lo
       QUIET=$((QUIET+1)); OK=$((OK+1)); continue
     fi
     NOT_ARGS=()
-    for sha in ${(f)PREV}; do
-      git -C "$M" cat-file -e "$sha" 2>/dev/null && NOT_ARGS+=("--not" "$sha")
-    done
-    if git -C "$M" bundle create "$TMP" --all "${NOT_ARGS[@]}" >/dev/null 2>&1; then
+    while IFS= read -r sha; do
+      [ -n "$sha" ] || continue
+      git -C "$M" cat-file -e "$sha" 2>/dev/null && NOT_ARGS[${#NOT_ARGS[@]}]="--not" \
+        && NOT_ARGS[${#NOT_ARGS[@]}]="$sha"
+    done <<< "$PREV"
+    # bash 3.2, which is what macOS ships, treats an empty array under set -u as unset.
+    if git -C "$M" bundle create "$TMP" --all ${NOT_ARGS[@]+"${NOT_ARGS[@]}"} >/dev/null 2>&1; then
       mkdir -p "$DRIVE/inc/$SAFE"
       mv -f "$TMP" "$DRIVE/inc/$SAFE/$STAMP.bundle"
       note "$DRIVE/inc/$SAFE/$STAMP.bundle"
@@ -215,7 +218,7 @@ note "$DRIVE/metadata/_repo-list.json"
 note "$DRIVE/LAST-RUN.txt"
 note "$DRIVE/RESTORE.md"
 note "$DRIVE/history.json"
-BYTES=$(python3 -c "
+BYTES=$("$GDB_PYTHON" -c "
 import os,sys
 p=sys.argv[1]
 seen=[]
@@ -243,7 +246,7 @@ Full bundles:    $FULLS
 Diff bundles:    $INCS
 Unchanged:       $QUIET
 Failed:          $FAIL ${FAILED[*]:-}
-Folder size:     $(python3 -c "print('%.2f GB'%($BYTES/1073741824))")
+Folder size:     $("$GDB_PYTHON" -c "print('%.2f GB'%($BYTES/1073741824))")
 Local mirrors:   $MIRRORS
 Log:             $LOG
 
@@ -295,7 +298,7 @@ from an earlier diff.
 TXT
 if [ ! -s "$DRIVE/RESTORE.md" ]; then echo "REPORT WRITE FAILED: RESTORE.md"; REPORTFAIL=1; fi
 
-python3 - "$DRIVE" "$TOTAL" "$OK" "$FAIL" "$FULLS" "$INCS" "$QUIET" "$BYTES" <<'PY'
+"$GDB_PYTHON" - "$DRIVE" "$TOTAL" "$OK" "$FAIL" "$FULLS" "$INCS" "$QUIET" "$BYTES" <<'PY'
 import sys, json, os, datetime
 d, total, ok, fail, fulls, incs, quiet, b = sys.argv[1], *[int(x) for x in sys.argv[2:]]
 hist = os.path.join(d, 'history.json')
@@ -315,7 +318,7 @@ dash = os.environ['DASHDIR']
 os.makedirs(dash, exist_ok=True)
 open(os.path.join(dash, 'history.json'), 'w').write(open(tmp).read())
 PY
-if ! python3 -c "import json,sys;json.load(open(sys.argv[1]))" "$DRIVE/history.json" 2>/dev/null; then
+if ! "$GDB_PYTHON" -c "import json,sys;json.load(open(sys.argv[1]))" "$DRIVE/history.json" 2>/dev/null; then
   echo "REPORT WRITE FAILED: history.json"; REPORTFAIL=1
 fi
 

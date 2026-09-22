@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 # Reads the last 7 days of backup state and prints a plain-text report.
 # Safe to run any time. It reads files and prints; it changes nothing.
 # Deterministic on purpose: the Monday routine runs THIS and relays it, so the
@@ -6,10 +6,10 @@
 # Local files only. A launchd job cannot list the cloud folder, so nothing here
 # touches it; see docs/WHY.md.
 set -u
-GDB_ROOT="${GDB_ROOT:-${0:A:h:h}}"
+GDB_ROOT="${GDB_ROOT:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"}"
 source "$GDB_ROOT/bin/config.sh"
 export BK="$DATA_DIR"
-python3 - <<'PY'
+"$GDB_PYTHON" - <<'PY'
 import json, os, glob, datetime, subprocess
 
 BK = os.environ["BK"]

@@ -3,7 +3,7 @@ Description=Weekly full rebuild of every bundle
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/env zsh @@ROOT@@/bin/backup.sh
+ExecStart=/usr/bin/env bash @@ROOT@@/bin/backup.sh
 Environment=GDB_ROOT=@@ROOT@@
 Environment=BACKUP_FULL=1
 StandardOutput=append:@@LOGDIR@@/backup-weekly.log

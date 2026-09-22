@@ -3,7 +3,7 @@ Description=Rebuild one repo from its bundle and prove it against GitHub
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/env zsh @@ROOT@@/bin/restore-test.sh
+ExecStart=/usr/bin/env bash @@ROOT@@/bin/restore-test.sh
 Environment=GDB_ROOT=@@ROOT@@
 StandardOutput=append:@@LOGDIR@@/restore-test.log
 StandardError=append:@@LOGDIR@@/restore-test.log

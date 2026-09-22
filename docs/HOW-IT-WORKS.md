@@ -112,7 +112,7 @@ year later there is still an answer to "was this tested, and what did it say".
 Nothing is hidden in a database. Everything is a file:
 
 ```bash
-zsh bin/week-report.sh                              # plain text, last 7 days
+bash bin/week-report.sh                              # plain text, last 7 days
 cat ~/.git-drive-backup/dashboard/history.json      # every run
 ls  ~/.git-drive-backup/dashboard/tests/            # one json per test
 open ~/.git-drive-backup/proofs/                    # the HTML reports
@@ -143,7 +143,7 @@ your settings, so it would need rewriting in Python rather than porting.
 ## Proving it still works
 
 ```bash
-zsh tests/selftest.sh
+bash tests/selftest.sh
 ```
 
 It makes a throwaway repo, bundles it, rebuilds it from that bundle alone, serves the

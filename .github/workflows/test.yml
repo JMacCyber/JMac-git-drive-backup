@@ -23,24 +23,26 @@ jobs:
   selftest:
     name: Self test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-22.04, macos-14, macos-15]
+        os: [ubuntu-24.04, ubuntu-22.04, macos-14, macos-15, windows-2022, windows-2025]
+    # Windows has no bash of its own. Git for Windows ships one, and it is already
+    # on every runner because git is, so the scripts run there unchanged.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      - name: Install zsh
-        if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
       - name: Versions
         run: |
           uname -a
-          zsh --version
+          bash --version | head -1
           git --version
-          python3 --version
+          python3 --version || python --version
       - name: Self test
-        run: zsh tests/selftest.sh
+        run: bash tests/selftest.sh
 
   scheduler:
     name: Scheduler files on ${{ matrix.os }}
@@ -49,16 +51,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      - name: Install zsh
-        if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
       - name: Shell and python parse
         run: |
-          for f in bin/*.sh install.sh demo/make-demo.sh tests/selftest.sh; do zsh -n "$f"; echo "parsed $f"; done
-          python3 -m py_compile bin/dashboard.py demo/make-demo.py
+          for f in bin/*.sh install.sh demo/make-demo.sh tests/selftest.sh; do bash -n "$f"; echo "parsed $f"; done
+          (python3 -m py_compile bin/dashboard.py demo/make-demo.py) || python -m py_compile bin/dashboard.py demo/make-demo.py
+      - name: The installer preflight runs and refuses cleanly
+        run: |
+          out=$(bash install.sh --check 2>&1) || true
+          echo "$out"
+          echo "$out" | grep -q "Checking this machine" || { echo "preflight did not run"; exit 1; }
       - name: launchd plists are valid
         if: runner.os == 'macOS'
         run: |
@@ -76,18 +83,14 @@ jobs:
           done
           ls -1 /tmp/u
           systemd-analyze verify /tmp/u/com.test.*.service /tmp/u/com.test.*.timer
-
-  windows:
-    name: Windows, what actually works
-    runs-on: windows-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      # Windows is not a supported platform: the scripts are zsh and the
-      # dashboard shells out to zsh to read the settings. This job proves the
-      # one part that is portable, so the limit in the README stays honest
-      # rather than being an assumption nobody ever checked.
-      - name: The python parses
-        run: python -m py_compile bin/dashboard.py demo/make-demo.py
-      - name: Say plainly what does not work here
-        run: echo "zsh scripts and the scheduler are not supported on Windows. See README, Honest Limits."
+      - name: Task Scheduler accepts the four tasks, then they are removed
+        if: runner.os == 'Windows'
+        run: |
+          B=$(cygpath -w "$(command -v bash)")
+          set -e
+          schtasks //create //f //tn "com.test.daily"  //sc daily  //st 02:30 //tr "\"$B\" -lc \"true\""
+          schtasks //create //f //tn "com.test.weekly" //sc weekly //d SUN //st 03:30 //tr "\"$B\" -lc \"true\""
+          schtasks //query  //tn "com.test.daily" //fo list //v | head -20
+          schtasks //delete //f //tn "com.test.daily"
+          schtasks //delete //f //tn "com.test.weekly"
+          echo "Task Scheduler round trip OK"

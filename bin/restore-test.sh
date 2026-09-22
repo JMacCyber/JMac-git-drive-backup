@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 # Weekly restore test. Rebuilds ONE repo from its Google Drive bundle alone, then
 # proves the rebuild against GitHub, and registers the result for a human to approve
 # in the dashboard.
@@ -8,9 +8,9 @@
 #
 # Rotation: one repo per week, in order, from $STATE/restore-rotation.txt.
 set -u
-setopt nullglob
+shopt -s nullglob
 
-GDB_ROOT="${GDB_ROOT:-${0:A:h:h}}"
+GDB_ROOT="${GDB_ROOT:-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"}"
 source "$GDB_ROOT/bin/config.sh"
 DRIVE="$CLOUD_DIR"
 ROT="$STATE/restore-rotation.txt"
@@ -20,12 +20,15 @@ mkdir -p "$PROOFS" "$TESTDIR"
 [ -s "$ROT" ] || { echo "no rotation list at $ROT, nothing to test"; exit 0; }
 
 # --- pick this week's repo, then advance the position, so a crash never repeats one
-typeset -a LIST
-LIST=("${(@f)$(grep -v '^[[:space:]]*#' "$ROT" | grep -v '^[[:space:]]*$')}")
+LIST=()
+while IFS= read -r line; do
+  case "$line" in ''|\#*|' '*\#*) continue ;; esac
+  LIST[${#LIST[@]}]="$line"
+done < <(grep -v '^[[:space:]]*#' "$ROT" | grep -v '^[[:space:]]*$')
 N=${#LIST[@]}
 [ "$N" -gt 0 ] || { echo "rotation list is empty"; exit 0; }
 P=$( [ -f "$POS" ] && cat "$POS" || echo 0 )
-IDX=$(( (P % N) + 1 ))
+IDX=$(( P % N ))   # bash arrays start at 0
 NWO="${LIST[$IDX]}"
 echo $(( (P + 1) % N )) > "$POS"
 
@@ -33,9 +36,14 @@ SAFE="${NWO//\//__}"
 NAME="${NWO##*/}"
 STAMP=$(date +%Y%m%d-%H%M%S)
 ID="$STAMP-$NAME"
-WS="/tmp/restore-test-$ID"
+GDB_TMP="${TMPDIR:-/tmp}"; GDB_TMP="${GDB_TMP%/}"   # macOS sets TMPDIR with a trailing /
+WS="$GDB_TMP/restore-test-$ID"
 LOG="$WS/test.log"
 mkdir -p "$WS"
+# The dashboard is native Python. Under Git Bash it cannot open a /tmp path, so the
+# record carries the path in the form the dashboard's own OS understands.
+WS_REC="$WS"
+[ "$GDB_OS" = "Windows" ] && WS_REC=$(cygpath -w "$WS" 2>/dev/null || echo "$WS")
 exec > >(tee -a "$LOG") 2>&1
 
 echo "== restore test $ID =="
@@ -119,7 +127,7 @@ if [ -n "$SRC" ]; then
   FILES=$( cd "$WS/$NAME" && find . -type f -not -path './.git/*' | wc -l | tr -d ' ' )
   # python walks the tree the same way on every platform. find -exec stat differs
   # between BSD and GNU, and a wrong byte count here would be reported as evidence.
-  BYTES=$( python3 -c "
+  BYTES=$( "$GDB_PYTHON" -c "
 import os, sys
 t = 0
 for r, d, f in os.walk(sys.argv[1]):
@@ -166,7 +174,7 @@ R="$WS/$NAME"
 if [ -f "$R/package.json" ]; then
   if cap 900 npm --prefix "$R" install --silent --no-audit --no-fund > "$WS/npm.log" 2>&1; then
     ck "Dependencies Install" "Passed" "$(grep -oE '[0-9]+ packages' "$WS/npm.log" | head -1)"
-    if python3 -c "import json,sys;sys.exit(0 if 'build' in (json.load(open('$R/package.json')).get('scripts') or {}) else 1)"; then
+    if "$GDB_PYTHON" -c "import json,sys;sys.exit(0 if 'build' in (json.load(open('$R/package.json')).get('scripts') or {}) else 1)"; then
       cap 1800 npm --prefix "$R" run build > "$WS/build.log" 2>&1 \
         && ck "Project Builds" "Passed" "npm run build exit 0" \
         || ck "Project Builds" "Failed" "npm run build exit $?, see build.log"
@@ -177,7 +185,7 @@ if [ -f "$R/package.json" ]; then
     ck "Dependencies Install" "Failed" "npm install exit $?, see npm.log"
   fi
 elif [ -f "$R/pyproject.toml" ] || [ -f "$R/requirements.txt" ]; then
-  if cap 600 python3 -m compileall -q "$R" > "$WS/py.log" 2>&1; then
+  if cap 600 "$GDB_PYTHON" -m compileall -q "$R" > "$WS/py.log" 2>&1; then
     ck "Python Compiles" "Passed" "every .py compiled"
   else
     ck "Python Compiles" "Failed" "see py.log"
@@ -189,7 +197,7 @@ fi
 # --- 4b. serve the rebuilt project on localhost, so a human can click through it
 # A checklist says the files match. A page you can open says the work came back.
 #
-# Static by default: python3 -m http.server never executes the restored project's
+# Static by default: "$GDB_PYTHON" -m http.server never executes the restored project's
 # own code, so opening the preview cannot start anything on this machine. Set
 # PREVIEW_RUN_CMD in config.env to run the project's own server instead, and read
 # docs/HOW-IT-WORKS.md first: that choice runs code out of the backup.
@@ -211,13 +219,13 @@ if [ -n "$PREV_PORT" ]; then
   [ -n "$PREV_DIR" ] || PREV_DIR="$R"
   if [ -n "${PREVIEW_RUN_CMD:-}" ]; then
     PREV_MODE="project server: $PREVIEW_RUN_CMD"
-    ( cd "$R" && PORT="$PREV_PORT" nohup zsh -lc "$PREVIEW_RUN_CMD" > "$WS/preview.log" 2>&1 & echo $! > "$WS/preview.pid" )
+    ( cd "$R" && PORT="$PREV_PORT" nohup bash -lc "$PREVIEW_RUN_CMD" > "$WS/preview.log" 2>&1 & echo $! > "$WS/preview.pid" )
   else
     PREV_MODE="static files from ${PREV_DIR##*/}"
-    # Same stdlib server as python3 -m http.server, minus one thing: its bind calls
+    # Same stdlib server as "$GDB_PYTHON" -m http.server, minus one thing: its bind calls
     # socket.getfqdn() for a hostname it only prints in error pages, and that lookup
     # can stall the start for tens of seconds where reverse DNS is slow.
-    nohup python3 -c '
+    nohup "$GDB_PYTHON" -c '
 import sys, socketserver
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -249,7 +257,7 @@ VERDICT=$( [ "$FAILED" -eq 0 ] && echo Passed || echo Failed )
 WSB=$(du -sk "$WS" | awk '{print $1*1024}')
 echo "verdict: $VERDICT ($FAILED failed checks), workspace $WSB bytes"
 
-python3 - "$ID" "$NWO" "$WS" "$CHECKS" "$VERDICT" "$WSB" "$BUN" "$BSIZE" "$SRC" "$LOG" "$PREV_PORT" "$PREV_PID" "$PREV_MODE" <<'PY'
+"$GDB_PYTHON" - "$ID" "$NWO" "$WS_REC" "$CHECKS" "$VERDICT" "$WSB" "$BUN" "$BSIZE" "$SRC" "$LOG" "$PREV_PORT" "$PREV_PID" "$PREV_MODE" <<'PY'
 import json, os, sys, datetime, html
 tid, nwo, ws, ckf, verdict, wsb, bun, bsize, src, logp = sys.argv[1:11]
 pport, ppid, pmode = (sys.argv[11:14] + ["", "", ""])[:3]

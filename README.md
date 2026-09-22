@@ -37,7 +37,7 @@ Four things, once:
 
 1. Install the GitHub command line tool and sign in.
 2. Copy `config.env.example` to `config.env` and put in your cloud folder's path.
-3. Run `zsh install.sh`.
+3. Run `bash install.sh`.
 4. List the repos you want tested, one per line, in the rotation file it makes for you.
 
 After that, once a week:
@@ -52,8 +52,8 @@ git clone https://github.com/JMacCyber/JMac-git-drive-backup.git
 cd JMac-git-drive-backup
 cp config.env.example config.env
 # open config.env and set CLOUD_DIR to your synced folder
-zsh install.sh --check     # tells you what is missing, changes nothing
-zsh install.sh             # sets it up and starts the dashboard
+bash install.sh --check     # tells you what is missing, changes nothing
+bash install.sh             # sets it up and starts the dashboard
 ```
 
 You need: macOS or Linux, zsh, git, Python 3, and the [GitHub CLI](https://cli.github.com)
@@ -131,7 +131,7 @@ stopped and the temporary copy was removed. 28 checks, and the run is red if one
 Run the same test yourself, in about 20 seconds:
 
 ```bash
-zsh tests/selftest.sh
+bash tests/selftest.sh
 ```
 
 It touches nothing of yours. Everything it makes lives in one temporary folder, and it

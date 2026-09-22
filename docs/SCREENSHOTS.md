@@ -5,7 +5,7 @@ picture was drawn, edited or touched up. The repository names in them (`acme/web
 `acme/api` and so on) are invented. You can make the same data yourself:
 
 ```bash
-zsh demo/make-demo.sh
+bash demo/make-demo.sh
 GDB_CONFIG=$PWD/demo/config.env python3 bin/dashboard.py
 ```
 

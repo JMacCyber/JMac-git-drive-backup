@@ -9,7 +9,7 @@ from a file the backup job wrote on local disk.
 Approvals are the point: a restored test copy is never deleted until it is
 approved here, and the record of what was approved and when outlives the copy.
 """
-import html, json, os, re, platform, shutil, subprocess, time, urllib.parse
+import html, json, os, re, platform, shutil, subprocess, tempfile, time, urllib.parse
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -18,9 +18,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def load_config():
     """One source of settings for every part of this tool: config.env, read through
     bin/config.sh so the shell scripts and this server can never disagree."""
-    # zsh is at /bin/zsh on macOS and /usr/bin/zsh on most Linux, so ask PATH.
-    zsh = shutil.which("zsh") or "/bin/zsh"
-    out = subprocess.run([zsh, os.path.join(ROOT, "bin", "config.sh"), "--json"],
+    # bash sits in a different place on each platform, and on Windows it comes from
+    # Git for Windows, which is not always on PATH. Look in the usual places too.
+    sh = shutil.which("bash") or next(
+        (c for c in (r"C:\Program Files\Git\bin\bash.exe",
+                     r"C:\Program Files (x86)\Git\bin\bash.exe",
+                     "/bin/bash", "/usr/bin/bash") if os.path.exists(c)), "bash")
+    out = subprocess.run([sh, os.path.join(ROOT, "bin", "config.sh"), "--json"],
                          capture_output=True, text=True, env={**os.environ, "GDB_ROOT": ROOT})
     if out.returncode != 0:
         raise SystemExit(out.stderr.strip() or "config.sh failed")
@@ -137,15 +141,44 @@ def logs():
 def agent(label):
     """Is the scheduled job loaded, and what did it exit with last time?
 
-    macOS keeps this in launchd, Linux in systemd. Both are asked the same
-    question and answer in the same shape, so the page does not care which
-    machine it is on. Anything else reports Not Loaded, which is honest: this
-    tool only installs jobs on those two."""
+    macOS keeps this in launchd, Linux in systemd, Windows in Task Scheduler. All
+    three are asked the same question and answer in the same shape, so the page does
+    not care which machine it is on. Anything else reports Not Loaded, which is
+    honest: this tool only installs jobs on those three."""
     if OS == "Darwin":
         return _launchd(label)
+    if OS == "Windows":
+        return _schtasks(label)
     if OS == "Linux":
         return _systemd(label)
     return {"loaded": False, "exit": None}
+
+def _schtasks(label):
+    """Task Scheduler prints one Field: value per line. Status says whether the task
+    is ready to run, Last Result is the exit code of the run before, and 267011 is
+    its code for "has never run", which is reported as no result rather than as 0."""
+    try:
+        out = subprocess.run(["schtasks", "/query", "/tn", label, "/fo", "list", "/v"],
+                             capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return {"loaded": False, "exit": None}
+    if out.returncode != 0:
+        return {"loaded": False, "exit": None}
+    f = {}
+    for line in out.stdout.splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            f[k.strip().lower()] = v.strip()
+    status = f.get("status", "")
+    code = None
+    raw = (f.get("last result") or "").strip()
+    if raw:
+        try:
+            n = int(raw, 0)
+            code = None if n == 267011 else n
+        except ValueError:
+            code = None
+    return {"loaded": status.lower() in ("ready", "running"), "exit": code}
 
 def _launchd(label):
     try:
@@ -601,6 +634,22 @@ def stop_preview(pid, ws):
         return "Stop Failed"
 
 
+# The only folders this dashboard may ever remove: a folder named restore-test-<id>
+# sitting directly inside a temp directory. A hardcoded "/tmp/" prefix was right on
+# macOS and Linux and wrong on Windows, where the temp directory is under AppData.
+TEMP_ROOTS = set()
+for _c in (tempfile.gettempdir(), os.environ.get("TMPDIR"), os.environ.get("TEMP"),
+           os.environ.get("TMP"), "/tmp"):
+    if _c and os.path.isdir(_c):
+        TEMP_ROOTS.add(os.path.realpath(_c))
+
+def removable(ws):
+    if not ws or not os.path.isdir(ws):
+        return False
+    real = os.path.realpath(ws)
+    return (os.path.basename(real).startswith("restore-test-")
+            and os.path.dirname(real) in TEMP_ROOTS)
+
 TID_OK = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._-]{0,119}\Z")
 
 def valid_tid(tid):
@@ -629,7 +678,7 @@ def decide(tid, state, delete_copy):
     if delete_copy:
         ws = t.get("workspace") or ""
         ok = False
-        if ws.startswith("/tmp/restore-test-") and os.path.isdir(ws):
+        if removable(ws):
             shutil.rmtree(ws, ignore_errors=True)
             ok = not os.path.exists(ws)
         t["cleanup"] = {"state": "Done" if ok else "Nothing To Delete",
