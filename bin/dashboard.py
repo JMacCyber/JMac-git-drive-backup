@@ -9,7 +9,7 @@ from a file the backup job wrote on local disk.
 Approvals are the point: a restored test copy is never deleted until it is
 approved here, and the record of what was approved and when outlives the copy.
 """
-import html, json, os, re, platform, shutil, subprocess, tempfile, time, urllib.parse
+import html, json, os, re, platform, shutil, stat, subprocess, sys, tempfile, time, urllib.parse
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -715,6 +715,32 @@ def removable(ws):
             pass
     return False, "that folder is not inside this machine's temp directory"
 
+def force_rmtree(path):
+    """Remove one folder, on a system that makes that harder than it sounds.
+
+    git marks everything under .git/objects read-only, and Windows honours that flag on
+    delete where macOS and Linux only look at the parent folder. So a read-only file is
+    made writable and tried once more. Windows also releases a file handle a moment after
+    the program holding it has gone, so a failure is retried rather than believed."""
+    def retry(func, p, exc):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except Exception:
+            pass
+    for attempt in range(4):
+        try:
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(path, onexc=retry)
+            else:
+                shutil.rmtree(path, onerror=retry)
+        except Exception:
+            pass
+        if not os.path.exists(path):
+            return True
+        time.sleep(0.5)
+    return False
+
 TID_OK = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._-]{0,119}\Z")
 
 def valid_tid(tid):
@@ -745,8 +771,7 @@ def decide(tid, state, delete_copy):
         ok = False
         allowed, why = removable(ws)
         if allowed:
-            shutil.rmtree(ws, ignore_errors=True)
-            ok = not os.path.exists(ws)
+            ok = force_rmtree(ws)
             if not ok:
                 why = "the folder would not delete, something still has it open"
         t["cleanup"] = {"state": "Done" if ok else "Nothing To Delete",
