@@ -156,11 +156,14 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 print((d.get("approval") or {}).get("state"))
 print((d.get("cleanup") or {}).get("state"))
+print((d.get("cleanup") or {}).get("why") or "")
 print((d.get("preview") or {}).get("state"))
 PY
 want "Recorded Approval" "$(sed -n 1p "$T/after")" "Approved"
-want "Recorded Cleanup"  "$(sed -n 2p "$T/after")" "Done"
-want "Recorded Preview"  "$(sed -n 3p "$T/after")" "Stopped"
+CLEAN=$(sed -n 2p "$T/after")
+if [ "$CLEAN" = "Done" ]; then ok "Recorded Cleanup" "Done"
+else bad "Recorded Cleanup" "expected Done, got $CLEAN: $(sed -n 3p "$T/after")"; fi
+want "Recorded Preview"  "$(sed -n 4p "$T/after")" "Stopped"
 
 # --- 7. nothing in the cloud folder was removed
 want "Cloud Folder Untouched" "$(ls "$T/cloud/full" | wc -l | tr -d ' ')" "1"

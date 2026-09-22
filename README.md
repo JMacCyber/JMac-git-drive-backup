@@ -10,8 +10,8 @@ locks, or a token leaks, or you delete the wrong thing, it can all go at once. T
 a second copy somewhere else, and it checks that copy instead of hoping.
 
 Free. It uses git, Python and the scheduler already on your machine. It starts no paid
-service. It never writes to GitHub, and it never deletes anything of yours. Runs on macOS
-and Linux.
+service. It never writes to GitHub, and it never deletes anything of yours. Runs on macOS,
+Linux and Windows.
 
 ![The dashboard overview](docs/images/01-overview.png)
 
@@ -56,8 +56,10 @@ bash install.sh --check     # tells you what is missing, changes nothing
 bash install.sh             # sets it up and starts the dashboard
 ```
 
-You need: macOS or Linux, zsh, git, Python 3, and the [GitHub CLI](https://cli.github.com)
-signed in with `gh auth login`. The check step names anything you are missing.
+You need: macOS, Linux or Windows, git, Python 3, and the
+[GitHub CLI](https://cli.github.com) signed in with `gh auth login`. The check step names
+anything you are missing. On Windows, run these from Git Bash, which
+[Git for Windows](https://gitforwindows.org) installs with git.
 
 Read [docs/SETUP.md](docs/SETUP.md) for the longer walk-through, including how to find
 your cloud folder's real path.
@@ -71,8 +73,8 @@ your cloud folder's real path.
 | Sunday, 05:00 | Restore test: rebuilds one repo, checks it, serves it |
 | Always | The dashboard, on `localhost:3070` |
 
-Times are set in the four files in `launchd/`. Change them before you install, or edit the
-installed copies in `~/Library/LaunchAgents` and reload.
+On macOS the times are in the four files in `launchd/`, on Linux in `systemd/`. On Windows
+`install.sh` passes them to Task Scheduler, so change them in Task Scheduler or reinstall.
 
 ## The Weekly Test, Step By Step
 
@@ -91,8 +93,8 @@ installed copies in `~/Library/LaunchAgents` and reload.
 8. Write an HTML report and a record marked **Pending**.
 9. Wait. It deletes nothing.
 
-When you press Approve, it stops that one preview server and deletes that one folder under
-`/tmp`. Nothing else, ever. Reject keeps both so you can dig into them.
+When you press Approve, it stops that one preview server and deletes that one folder in the
+system temp directory. Nothing else, ever. Reject keeps both so you can dig into them.
 
 ## Safety Rules It Follows
 
@@ -100,8 +102,9 @@ When you press Approve, it stops that one preview server and deletes that one fo
   fails before it reaches the network. No issue, branch or repo is ever changed.
 - **Nothing in your cloud folder is deleted.** Replaced bundles move to `archive/` with a
   line in a README saying what moved, when, and why.
-- **One delete, and you own it.** The only thing this tool ever removes is a test copy
-  under `/tmp/restore-test-`, after you approve it on screen.
+- **One delete, and you own it.** The only thing this tool ever removes is a folder named
+  `restore-test-<id>` sitting in the system temp directory, after you approve it on screen.
+  If the folder fails that description the dashboard refuses, and says why on the page.
 - **No paid services.** Nothing here signs you up for anything.
 - **Previews do not run your code.** By default the preview is a plain static file server,
   so opening it cannot execute anything out of the backup. Turning that off is opt-in and
@@ -109,11 +112,12 @@ When you press Approve, it stops that one preview server and deletes that one fo
 
 ## Honest Limits
 
-- macOS and Linux only. macOS runs the jobs on `launchd`, Linux on systemd user timers.
-  Windows is not supported: the scripts are zsh and the dashboard shells out to zsh to read
-  your settings. Making it work on Windows means rewriting the shell scripts in Python.
+- Three schedulers, one for each system: `launchd` on macOS, systemd user timers on Linux,
+  Task Scheduler on Windows. There is one set of scripts, not three, and they are bash.
 - On Linux the timers only run while you are logged in, unless you turn on lingering:
   `loginctl enable-linger $USER`.
+- On Windows the jobs need Git Bash, which comes with git. Command Prompt and PowerShell
+  cannot run them. The dashboard is Python and opens the same way everywhere.
 - A green week proves one repo rebuilt on one machine on one day. It says nothing about the
   repos it did not test that week. The dashboard says so on the page.
 - A repo with no commits has nothing to bundle. Those are listed separately so an
@@ -123,10 +127,12 @@ When you press Approve, it stops that one preview server and deletes that one fo
 
 ## Is It Tested
 
-Yes, on every push, on four machines: Ubuntu 24.04, Ubuntu 22.04, macOS 14 and macOS 15.
-The test builds a throwaway repo, bundles it, rebuilds it from that bundle alone, serves
-the rebuilt copy, opens the dashboard, approves the result, and then checks the preview
-stopped and the temporary copy was removed. 28 checks, and the run is red if one fails.
+Yes, on every push, on six machines: Ubuntu 24.04, Ubuntu 22.04, macOS 14, macOS 15,
+Windows Server 2022 and Windows Server 2025. The test builds a throwaway repo, bundles it,
+rebuilds it from that bundle alone, serves the rebuilt copy, opens the dashboard, tries to
+approve it from a page that is not the dashboard and is refused, then approves it properly
+and checks the preview stopped and the temporary copy was removed. 32 checks, and the run
+is red if one fails.
 
 Run the same test yourself, in about 20 seconds:
 

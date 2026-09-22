@@ -9,10 +9,11 @@
 | `bin/dashboard.py` | The website on `localhost:3070` |
 | `bin/week-report.sh` | Prints the last seven days as plain text |
 | `bin/config.sh` | Reads `config.env`, hands the settings to everything else |
-| `bin/config.sh` handles the platform | `gdb_size`, `gdb_mtime`, `gdb_free_gb` and `gdb_port_busy` try the macOS form of each command, then the Linux one, so nothing else has to care |
+| `bin/config.sh` handles the platform | It reads `uname` once into `GDB_OS`, then `gdb_size`, `gdb_mtime`, `gdb_free_gb` and `gdb_port_busy` pick the right form of each command, so nothing else has to care |
 | `launchd/*.plist.tmpl` | The four schedules on macOS. `install.sh` fills in your paths |
 | `systemd/*.tmpl` | The same four schedules on Linux, as user timers. No root needed |
-| `tests/selftest.sh` | Runs the whole chain against a throwaway repo. 28 checks |
+| Windows | The same four schedules, made by `install.sh` with `schtasks`. No files to template |
+| `tests/selftest.sh` | Runs the whole chain against a throwaway repo. 32 checks |
 
 ## What lands in your cloud folder
 
@@ -97,10 +98,17 @@ Either way the preview is stopped when you approve the test, and the port goes b
 The dashboard shows a Pending test with two buttons.
 
 **Approve and delete copy** does exactly three things: stops the preview server, deletes
-the one folder under `/tmp/restore-test-`, and writes the decision into the record.
+the one folder named `restore-test-<id>` in the system temp directory, and writes the
+decision into the record.
 
 Before it sends any signal it checks that the process id still belongs to that preview.
-Process ids get reused, so a stale record could otherwise name something unrelated.
+Process ids get reused, so a stale record could otherwise name something unrelated. It
+reads the process table with `ps` on macOS and Linux and `tasklist` on Windows.
+
+The folder is checked the same way. It has to be named `restore-test-` something, and its
+parent has to be a real temp directory on this machine, compared as folders rather than as
+text: on Windows `RUNNER~1` and `runneradmin` are one directory spelled two ways. Anything
+else is refused, and the page says which of those two rules it broke.
 
 **Reject and keep copy** keeps the folder and the preview so you can investigate.
 
@@ -124,21 +132,29 @@ open ~/.git-drive-backup/proofs/                    # the HTML reports
 have an assistant read out. Give the assistant the script, not the dashboard: the script's
 numbers come from the files, so the same week always reports the same way.
 
-## macOS and Linux
+## macOS, Linux and Windows
 
-The two do the same work with different schedulers, and the dashboard asks whichever one
+All three do the same work with different schedulers, and the dashboard asks whichever one
 this machine has.
 
-| | macOS | Linux |
-|---|---|---|
-| Schedule | `launchd` user agents in `~/Library/LaunchAgents` | systemd user timers in `~/.config/systemd/user` |
-| Job names | `com.gitdrivebackup.daily` and so on | the same names, with `.timer` or `.service` |
-| Keeps the dashboard up | `KeepAlive` | `Restart=always` |
-| Runs when logged out | yes | only after `loginctl enable-linger $USER` |
-| See the jobs | `launchctl list \| grep gitdrivebackup` | `systemctl --user list-timers` |
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Schedule | `launchd` user agents in `~/Library/LaunchAgents` | systemd user timers in `~/.config/systemd/user` | Task Scheduler tasks, made by `schtasks` |
+| Job names | `com.gitdrivebackup.daily` and so on | the same names, with `.timer` or `.service` | the same names |
+| Keeps the dashboard up | `KeepAlive` | `Restart=always` | starts at logon |
+| Runs when logged out | yes | only after `loginctl enable-linger $USER` | no, the tasks run as you |
+| See the jobs | `launchctl list \| grep gitdrivebackup` | `systemctl --user list-timers` | `schtasks /query /tn com.gitdrivebackup.daily` |
 
-Windows is not supported. The scripts are zsh and the dashboard shells out to zsh to read
-your settings, so it would need rewriting in Python rather than porting.
+Windows needs Git Bash, which [Git for Windows](https://gitforwindows.org) installs
+alongside git. The scripts are bash, and Git Bash is bash, so there is one implementation
+and not a second one in PowerShell that would drift from it. Two things are genuinely
+different and are handled: Task Scheduler runs Windows programs, so `install.sh` translates
+every path with `cygpath`; and Git Bash numbers processes differently from Windows, so the
+preview's Windows process id is what gets recorded, because the dashboard is a native
+program and that is the number it can act on.
+
+A task that has never run reports `267011`, not `0`. The dashboard shows that as no result
+yet rather than as a success.
 
 ## Proving it still works
 
@@ -148,9 +164,28 @@ bash tests/selftest.sh
 
 It makes a throwaway repo, bundles it, rebuilds it from that bundle alone, serves the
 rebuilt copy, opens the dashboard on a spare port, approves the test, then checks the
-preview stopped and the temporary copy went. 28 checks, exit code 1 if any fail. It never
+preview stopped and the temporary copy went. 32 checks, exit code 1 if any fail. It never
 reads your real backups and never contacts GitHub. Everything it makes stays in one
 folder under the system temp directory, and it tells you where that is.
 
-The same script runs on every push against Ubuntu 24.04, Ubuntu 22.04, macOS 14 and
-macOS 15.
+The same script runs on every push against Ubuntu 24.04, Ubuntu 22.04, macOS 14, macOS 15,
+Windows Server 2022 and Windows Server 2025.
+
+## One limit worth stating plainly
+
+The restore test needs to read GitHub to compare against, so it asks `gh` for a token. That
+token is scoped to the one `git clone` that needs it and the environment is scrubbed before
+any restored code is built. What it cannot undo is this: `gh` keeps your token in the login
+keychain, and anything running as you can ask for it. That is true of `gh` itself, with or
+without this tool. If that is not acceptable, do not set `PREVIEW_RUN_CMD`, which is the
+only setting here that runs code out of a backup.
+
+## What a bundle does not carry
+
+- **Git LFS objects.** A bundle holds the pointer files, not the large files behind them.
+  An LFS repo needs `git lfs fetch --all` alongside this.
+- **Submodules.** The bundle records which commit of the submodule was used, not the
+  submodule's own history. Back each submodule up as its own repo.
+- **Everything GitHub keeps outside git.** Pull requests, reviews, actions history, wikis,
+  packages and releases. Issues and repo settings are saved as JSON in `metadata/`; the
+  rest is not saved at all.

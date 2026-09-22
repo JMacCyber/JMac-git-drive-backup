@@ -231,13 +231,17 @@ if [ -n "$PREV_PORT" ]; then
   [ -n "$PREV_DIR" ] || PREV_DIR="$R"
   if [ -n "${PREVIEW_RUN_CMD:-}" ]; then
     PREV_MODE="project server: $PREVIEW_RUN_CMD"
-    ( cd "$R" && PORT="$PREV_PORT" nohup bash -lc "$PREVIEW_RUN_CMD" > "$WS/preview.log" 2>&1 & gdb_write_pid $! "$WS/preview.pid" )
+    GDB_NOHUP=nohup; [ "$GDB_OS" = "Windows" ] && GDB_NOHUP=""
+    ( cd "$R" && PORT="$PREV_PORT" $GDB_NOHUP bash -lc "$PREVIEW_RUN_CMD" > "$WS/preview.log" 2>&1 & gdb_write_pid $! "$WS/preview.pid" )
   else
     PREV_MODE="static files from ${PREV_DIR##*/}"
     # Same stdlib server as "$GDB_PYTHON" -m http.server, minus one thing: its bind calls
     # socket.getfqdn() for a hostname it only prints in error pages, and that lookup
     # can stall the start for tens of seconds where reverse DNS is slow.
-    nohup "$GDB_PYTHON" -c '
+    # No nohup on Windows. There is no exec there, so nohup stays alive as the parent
+    # and the recorded id would name nohup.exe rather than the server it started.
+    GDB_NOHUP=nohup; [ "$GDB_OS" = "Windows" ] && GDB_NOHUP=""
+    $GDB_NOHUP "$GDB_PYTHON" -c '
 import sys, socketserver
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
