@@ -203,8 +203,21 @@ if [ -n "$PREV_PORT" ]; then
     ( cd "$R" && PORT="$PREV_PORT" nohup zsh -lc "$PREVIEW_RUN_CMD" > "$WS/preview.log" 2>&1 & echo $! > "$WS/preview.pid" )
   else
     PREV_MODE="static files from ${PREV_DIR##*/}"
-    nohup python3 -m http.server "$PREV_PORT" --bind 127.0.0.1 --directory "$PREV_DIR" \
-      > "$WS/preview.log" 2>&1 &
+    # Same stdlib server as python3 -m http.server, minus one thing: its bind calls
+    # socket.getfqdn() for a hostname it only prints in error pages, and that lookup
+    # can stall the start for tens of seconds where reverse DNS is slow.
+    nohup python3 -c '
+import sys, socketserver
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+class S(ThreadingHTTPServer):
+    allow_reuse_address = True
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+S(("127.0.0.1", int(sys.argv[1])),
+  partial(SimpleHTTPRequestHandler, directory=sys.argv[2])).serve_forever()
+' "$PREV_PORT" "$PREV_DIR" > "$WS/preview.log" 2>&1 &
     echo $! > "$WS/preview.pid"
   fi
   sleep 2

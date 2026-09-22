@@ -680,8 +680,19 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Location", "/test/" + urllib.parse.quote(tid))
         self.end_headers()
 
+class Server(ThreadingHTTPServer):
+    """http.server asks socket.getfqdn() for a name it only uses in error pages.
+    On a machine with slow reverse DNS that call blocks the bind for tens of
+    seconds, so the dashboard looks dead while it starts. We serve on 127.0.0.1
+    and never need the name, so skip the lookup."""
+    allow_reuse_address = True
+
+    def server_bind(self):
+        import socketserver
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
 if __name__ == "__main__":
-    ThreadingHTTPServer.allow_reuse_address = True
-    with ThreadingHTTPServer(("127.0.0.1", PORT), H) as s:
+    with Server(("127.0.0.1", PORT), H) as s:
         print("Backup Control on http://localhost:%d" % PORT, flush=True)
         s.serve_forever()

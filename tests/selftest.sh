@@ -99,16 +99,21 @@ WS="/tmp/restore-test-$TID"
 PREV_PID=$(cat "$WS/preview.pid" 2>/dev/null || echo "")
 
 # --- 4. the preview really serves the rebuilt files
-BODY=$(curl -s --max-time 5 "http://127.0.0.1:$PREV_PORT/" 2>/dev/null)
+BODY=""
+for i in $(seq 1 20); do   # a cold CI machine can take a few seconds to answer
+  BODY=$(curl -s --max-time 5 "http://127.0.0.1:$PREV_PORT/" 2>/dev/null)
+  [ -n "$BODY" ] && break
+  sleep 1
+done
 case "$BODY" in (*"<p>two</p>"*) ok "Preview Serves Rebuilt File" ;;
                 (*)              bad "Preview Serves Rebuilt File" "got: ${BODY:0:40}" ;; esac
 
 # --- 5. the dashboard
 python3 "$ROOT/bin/dashboard.py" > "$T/dash.log" 2>&1 &
 DASH_PID=$!
-for i in 1 2 3 4 5 6 7 8 9 10; do
+for i in $(seq 1 60); do
   curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$DASH_PORT/" && break
-  sleep 0.5
+  sleep 1
 done
 for p in / /tests "/test/$TID" /repos /runs /logs /about; do
   want "Page $p" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$DASH_PORT$p")" "200"

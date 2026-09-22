@@ -39,8 +39,16 @@ export TESTDIR="$DASHDIR/tests"
 # Linux it is on.
 export GDB_OS="$(uname)"
 
-gdb_size()  { stat -f %z "$1" 2>/dev/null || stat -c %s "$1"; }          # bytes
-gdb_mtime() { stat -f '%Sm' "$1" 2>/dev/null || stat -c '%y' "$1" | cut -d. -f1; }
+# Branch on the OS, never on the exit code. GNU stat takes -f too, where it means
+# "file system status", so `stat -f %z file || stat -c %s file` succeeds on Linux and
+# prints a block-size report instead of falling through. CI caught that one.
+if [ "$GDB_OS" = "Darwin" ]; then
+  gdb_size()  { stat -f %z "$1"; }                                       # bytes
+  gdb_mtime() { stat -f '%Sm' "$1"; }
+else
+  gdb_size()  { stat -c %s "$1"; }
+  gdb_mtime() { stat -c '%y' "$1" | cut -d. -f1; }
+fi
 gdb_free_gb() { df -Pk "$1" | awk 'NR==2{printf "%d", $4/1048576}'; }    # -Pk is POSIX
 gdb_port_busy() {   # exit 0 when something is already listening on the port
   python3 -c "import socket,sys
