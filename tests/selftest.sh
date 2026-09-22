@@ -121,6 +121,20 @@ done
 curl -s --max-time 5 "http://127.0.0.1:$DASH_PORT/test/$TID" | grep -q "Open The Rebuilt Site" \
   && ok "Preview Link On Page" || bad "Preview Link On Page"
 
+# --- 5b. the approval endpoint refuses what it should refuse, and the copy survives it
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d "id=$TID" --max-time 5 \
+  -H "Origin: http://evil.example" "http://127.0.0.1:$DASH_PORT/approve")
+want "Cross Site Post Refused" "$CODE" "403"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d "id=$TID" --max-time 5 \
+  -H "Sec-Fetch-Site: cross-site" "http://127.0.0.1:$DASH_PORT/approve")
+want "Cross Site Fetch Refused" "$CODE" "403"
+[ -d "$WS" ] && ok "Refused Post Kept The Copy" || bad "Refused Post Kept The Copy" "copy was removed"
+SENTINEL="$T/traversal-target.json"
+echo '{"keep":"me"}' > "$SENTINEL"
+curl -s -o /dev/null -X POST --max-time 5 \
+  --data-urlencode "id=../../../..$T/traversal-target" "http://127.0.0.1:$DASH_PORT/approve"
+grep -q '"keep"' "$SENTINEL" && ok "Traversal Id Refused" || bad "Traversal Id Refused" "file was rewritten"
+
 # --- 6. approval stops the preview and removes that one folder
 curl -s -o /dev/null -X POST -d "id=$TID" --max-time 10 "http://127.0.0.1:$DASH_PORT/approve"
 sleep 1

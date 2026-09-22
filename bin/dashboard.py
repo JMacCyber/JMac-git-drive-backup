@@ -9,7 +9,7 @@ from a file the backup job wrote on local disk.
 Approvals are the point: a restored test copy is never deleted until it is
 approved here, and the record of what was approved and when outlives the copy.
 """
-import html, json, os, platform, shutil, subprocess, time, urllib.parse
+import html, json, os, re, platform, shutil, subprocess, time, urllib.parse
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -601,9 +601,20 @@ def stop_preview(pid, ws):
         return "Stop Failed"
 
 
+TID_OK = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._-]{0,119}\Z")
+
+def valid_tid(tid):
+    """A test id names one file in one folder. Anything with a separator, a dot-dot
+    or an odd character is refused before it can be joined onto a path."""
+    return bool(TID_OK.match(tid or "")) and ".." not in tid
+
 def decide(tid, state, delete_copy):
     """Record the decision. Only ever removes a path this routine created under /tmp."""
+    if not valid_tid(tid):
+        return False
     path = os.path.join(TESTS, tid + ".json")
+    if os.path.dirname(os.path.realpath(path)) != os.path.realpath(TESTS):
+        return False
     t = rj(path, None)
     if not t:
         return False
@@ -668,6 +679,16 @@ class H(BaseHTTPRequestHandler):
             return self.send(page("Error", "<h2>Error</h2><pre>%s</pre>" % e(repr(ex))), 500)
 
     def do_POST(self):
+        # Approving deletes a restored copy and signs a human's name to the record.
+        # Any page in any tab can post a form to localhost, so a request that says it
+        # came from somewhere else is refused. A request with no Origin at all is a
+        # local tool, not a browser, and is allowed.
+        origin = self.headers.get("Origin")
+        mine = ("http://localhost:%d" % PORT, "http://127.0.0.1:%d" % PORT)
+        if (origin and origin not in mine) or \
+           self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+            return self.send("Refused: this request did not come from the dashboard.", 403,
+                             "text/plain; charset=utf-8")
         p = urllib.parse.urlparse(self.path).path
         n = int(self.headers.get("Content-Length", 0))
         form = urllib.parse.parse_qs(self.rfile.read(n).decode())
@@ -677,7 +698,7 @@ class H(BaseHTTPRequestHandler):
         elif p == "/reject":
             decide(tid, "Rejected", False)
         self.send_response(303)
-        self.send_header("Location", "/test/" + urllib.parse.quote(tid))
+        self.send_header("Location", "/test/" + urllib.parse.quote(tid) if valid_tid(tid) else "/tests")
         self.end_headers()
 
 class Server(ThreadingHTTPServer):

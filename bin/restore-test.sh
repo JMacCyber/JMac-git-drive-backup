@@ -87,11 +87,14 @@ git clone -q "$WS/$NAME.git" "$WS/$NAME" 2>"$WS/co.err" \
 # SAY SO in the check detail. A mirror comparison is weaker evidence than GitHub and
 # must never be reported as if it were the same thing.
 SRC=""
+# The token is passed to this one git command and to nothing else. It used to be
+# exported, which left it in the environment when npm ran the restored project's own
+# install scripts. Restored code is not trusted code.
 TOKEN=$(gh auth token 2>/dev/null)
 if [ -n "$TOKEN" ]; then
-  export GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=credential.helper
-  export GIT_CONFIG_VALUE_0="!f(){ echo username=x-access-token; echo password=$TOKEN; };f"
-  if git clone -q "https://github.com/$NWO.git" "$WS/$NAME-source" 2>"$WS/src.err"; then
+  if GIT_TERMINAL_PROMPT=0 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=credential.helper \
+     GIT_CONFIG_VALUE_0="!f(){ echo username=x-access-token; echo password=$TOKEN; };f" \
+     git clone -q "https://github.com/$NWO.git" "$WS/$NAME-source" 2>"$WS/src.err"; then
     SRC="GitHub"
     ck "Comparison Source" "Passed" "fresh clone from github.com/$NWO"
   fi
@@ -151,6 +154,14 @@ fi
 # --- 4. does the restored copy actually run? Identical files are not a working repo.
 # macOS has no timeout command, so perl's alarm caps each step.
 cap() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+
+# Everything below runs code that came out of the bundle. Drop every credential this
+# shell can see first. gh keeps its token in the login keychain, which any process
+# running as this user can still ask for; that limit is stated in docs/HOW-IT-WORKS.md.
+unset TOKEN GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN
+unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_ASKPASS SSH_AUTH_SOCK
+export GIT_TERMINAL_PROMPT=0 npm_config_audit=false npm_config_fund=false
+
 R="$WS/$NAME"
 if [ -f "$R/package.json" ]; then
   if cap 900 npm --prefix "$R" install --silent --no-audit --no-fund > "$WS/npm.log" 2>&1; then
@@ -279,8 +290,11 @@ It says nothing about the other bundles, and nothing about a machine without git
 <tr><td>Finished</td><td class="m">%s</td></tr></table>
 <h2>Checks</h2><table><tr><th>Check</th><th>Result</th><th>What Was Measured</th></tr>%s</table>
 <h2>How To Repeat This By Hand</h2>
-<pre class="m">git init --bare /tmp/v.git &amp;&amp; git -C /tmp/v.git bundle verify '%s'
-git clone --mirror '%s' /tmp/r.git &amp;&amp; git clone /tmp/r.git /tmp/r</pre>
+<pre class="m">V=$(mktemp -d)
+git init --bare "$V/v.git" &amp;&amp; git -C "$V/v.git" bundle verify '%s'
+git clone --mirror '%s' "$V/r.git" &amp;&amp; git clone "$V/r.git" "$V/r"
+echo "the rebuilt copy is in $V/r"</pre>
+<p class="muted">A fresh folder each time, so running this twice never collides with the run before.</p>
 """ % (e(tid), e(nwo), e(now), verdict, verdict, e(src or "nothing"), e(src or "nothing"),
        e(nwo), e(bun), e(bsize), e(ws), e(now), rows, e(bun), e(bun)))
 

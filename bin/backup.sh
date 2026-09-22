@@ -65,13 +65,17 @@ export GIT_CONFIG_COUNT=1
 export GIT_CONFIG_KEY_0=credential.helper
 export GIT_CONFIG_VALUE_0="!f(){ echo username=x-access-token; echo password=$TOKEN; };f"
 
-# Every repo the account owns, plus every repo in every org it belongs to.
+# GH_AFFILIATION=owner backs up only the repos this account owns. Anything else also
+# walks every org the account belongs to. It used to walk the orgs either way, so the
+# setting was documented and ignored.
 REPOLIST="$LOGDIR/repos-$STAMP.json"
 {
   gh repo list --limit 1000 --json nameWithOwner,isPrivate,isArchived,pushedAt,diskUsage
-  for org in $(gh api /user/orgs --jq '.[].login' 2>/dev/null); do
-    gh repo list "$org" --limit 1000 --json nameWithOwner,isPrivate,isArchived,pushedAt,diskUsage
-  done
+  if [ "$GH_AFFILIATION" != "owner" ]; then
+    for org in $(gh api /user/orgs --jq '.[].login' 2>/dev/null); do
+      gh repo list "$org" --limit 1000 --json nameWithOwner,isPrivate,isArchived,pushedAt,diskUsage
+    done
+  fi
 } | python3 -c "
 import json,sys
 seen={}
@@ -135,6 +139,16 @@ for NWO in $(python3 -c "import json;[print(r['nameWithOwner']) for r in json.lo
 
   if [ "$NEED_FULL" -eq 1 ]; then
     if git -C "$M" bundle create "$TMP" --all >/dev/null 2>&1; then
+      # A new full bundle used to be moved straight over the old one, which is a
+      # delete however it is worded. The old one is moved aside first. It costs one
+      # bundle per repo per monthly full; it buys a readable copy if the new bundle
+      # is written from a mirror that was already wrong.
+      if [ -f "$DRIVE/full/$SAFE.bundle" ]; then
+        mkdir -p "$DRIVE/archive/$SAFE"
+        if mv "$DRIVE/full/$SAFE.bundle" "$DRIVE/archive/$SAFE/full-replaced-$STAMP.bundle" 2>/dev/null; then
+          echo "$STAMP  $SAFE  previous full bundle moved here, replaced by a newer full" >> "$DRIVE/archive/README.md"
+        fi
+      fi
       mv -f "$TMP" "$DRIVE/full/$SAFE.bundle"
       note "$DRIVE/full/$SAFE.bundle"
       echo "$MONTH" > "$FULLMONTH"
