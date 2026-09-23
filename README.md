@@ -4,8 +4,10 @@
 [![Release](https://img.shields.io/github/v/tag/JMacCyber/JMac-git-drive-backup?label=release&sort=semver)](https://github.com/JMacCyber/JMac-git-drive-backup/releases)
 [![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-**Copies every one of your GitHub repos into a folder your cloud drive syncs, then
-proves once a week that a copy really comes back.**
+![Every GitHub repo saved to your own Google Drive as a git bundle, and one restored every week](docs/images/banner.png)
+
+**Copies every one of your GitHub repos into your Google Drive folder, then proves once a
+week that a copy really comes back.**
 
 GitHub holds your work. It is one company, one account, one password. If the account
 locks, or a token leaks, or you delete the wrong thing, it can all go at once. This makes
@@ -38,7 +40,7 @@ Linux and Windows.
 Four things, once:
 
 1. Install the GitHub command line tool and sign in.
-2. Copy `config.env.example` to `config.env` and put in your cloud folder's path.
+2. Copy `config.env.example` to `config.env` and put in your Google Drive folder's path.
 3. Run `bash install.sh`.
 4. List the repos you want tested, one per line, in the rotation file it makes for you.
 
@@ -53,7 +55,7 @@ After that, once a week:
 git clone https://github.com/JMacCyber/JMac-git-drive-backup.git
 cd JMac-git-drive-backup
 cp config.env.example config.env
-# open config.env and set CLOUD_DIR to your synced folder
+# open config.env and set CLOUD_DIR to your Google Drive folder
 bash install.sh --check     # tells you what is missing, changes nothing
 bash install.sh             # sets it up and starts the dashboard
 ```
@@ -64,7 +66,7 @@ anything you are missing. On Windows, run these from Git Bash, which
 [Git for Windows](https://gitforwindows.org) installs with git.
 
 Read [docs/SETUP.md](docs/SETUP.md) for the longer walk-through, including how to find
-your cloud folder's real path.
+your Google Drive folder's real path.
 
 ## What Runs, And When
 
@@ -102,7 +104,7 @@ system temp directory. Nothing else, ever. Reject keeps both so you can dig into
 
 - **Read-only against GitHub.** Every mirror has its push URL set to `no_push`, so a push
   fails before it reaches the network. No issue, branch or repo is ever changed.
-- **Nothing in your cloud folder is deleted.** Replaced bundles move to `archive/` with a
+- **Nothing in your Google Drive folder is deleted.** Replaced bundles move to `archive/` with a
   line in a README saying what moved, when, and why.
 - **One delete, and you own it.** The only thing this tool ever removes is a folder named
   `restore-test-<id>` sitting in the system temp directory, after you approve it on screen.
@@ -122,9 +124,11 @@ system temp directory. Nothing else, ever. Reject keeps both so you can dig into
   cannot run them. The dashboard is Python and opens the same way everywhere.
 - A green week proves one repo rebuilt on one machine on one day. It says nothing about the
   repos it did not test that week. The dashboard says so on the page.
+- It writes to a plain folder, so Dropbox, iCloud Drive or OneDrive work the same way.
+  Nothing here calls a Google API. Google Drive is what these instructions assume.
 - A repo with no commits has nothing to bundle. Those are listed separately so an
   unexplained gap never sits on the page looking like a failure.
-- The cloud provider is still one company. If you want a copy that survives them too, point
+- Google is still one company. If you want a copy that survives them too, point
   `CLOUD_DIR` at an external disk and run a second copy of this.
 
 ## Is It Tested
