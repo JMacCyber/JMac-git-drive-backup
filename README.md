@@ -4,10 +4,10 @@
 [![Release](https://img.shields.io/github/v/tag/JMacCyber/JMac-git-drive-backup?label=release&sort=semver)](https://github.com/JMacCyber/JMac-git-drive-backup/releases)
 [![Licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-![Every GitHub repo saved to your own Google Drive as a git bundle, and one restored every week](docs/images/banner.png)
+![Daily and weekly backups to Google Drive, with a full rebuild once a week](docs/images/banner.png)
 
-**Copies every one of your GitHub repos into your Google Drive folder, then proves once a
-week that a copy really comes back.**
+**Daily and weekly backups of every GitHub repo to your Google Drive, with a full rebuild
+once a week that proves a copy really comes back.**
 
 GitHub holds your work. It is one company, one account, one password. If the account
 locks, or a token leaks, or you delete the wrong thing, it can all go at once. This makes
